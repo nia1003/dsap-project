@@ -38,6 +38,47 @@
   .nav-links a { font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); text-decoration: none; transition: color .2s; }
   .nav-links a:hover { color: var(--text); }
 
+  /* ── AUDIO PLAYER ── */
+  .audio-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    background: rgba(10,10,10,0.97);
+    border-top: 1px solid var(--border);
+    padding: 0.75rem 2.5rem;
+    display: flex; align-items: center; gap: 1.5rem;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+  }
+  .audio-bar.visible { transform: translateY(0); }
+  .audio-bar-label { font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); min-width: 140px; }
+  .audio-bar-speaker { font-size: 0.9rem; font-weight: 600; color: var(--accent); }
+  .audio-bar-method { font-size: 0.65rem; color: var(--muted); }
+
+  .btn-play {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity .2s;
+  }
+  .btn-play:hover { opacity: 0.8; }
+  .btn-play svg { width: 14px; height: 14px; fill: #000; }
+
+  .waveform-wrap { flex: 1; position: relative; height: 48px; }
+  #waveform-canvas { width: 100%; height: 48px; display: block; }
+  .progress-line {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    width: 2px; background: var(--accent); opacity: 0.7;
+    pointer-events: none;
+    transition: left 0.05s linear;
+  }
+
+  .audio-time { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 40px; }
+
+  /* ── PLAY BTN on result cards ── */
+  .result-card { cursor: pointer; }
+  .result-play { font-size: 0.65rem; color: var(--muted); margin-top: 0.4rem; letter-spacing: 0.1em; }
+  .result-card:hover .result-play { color: var(--accent); }
+  .result-card.playing { border-left: 2px solid var(--accent); }
+
   /* ── HERO ── */
   .hero {
     min-height: 100vh; display: flex; flex-direction: column;
@@ -273,6 +314,23 @@
   <p>Flat Search · KD-Tree · LSH</p>
 </footer>
 
+<!-- AUDIO BAR -->
+<div class="audio-bar" id="audio-bar">
+  <div>
+    <div class="audio-bar-label">Now Playing</div>
+    <div class="audio-bar-speaker" id="audio-speaker-name">—</div>
+    <div class="audio-bar-method" id="audio-method-label"></div>
+  </div>
+  <button class="btn-play" id="btn-play-pause" onclick="togglePlay()">
+    <svg id="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+  <div class="waveform-wrap">
+    <canvas id="waveform-canvas"></canvas>
+    <div class="progress-line" id="progress-line"></div>
+  </div>
+  <div class="audio-time" id="audio-time">0.0s</div>
+</div>
+
 <!-- THREE.JS -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
@@ -281,6 +339,171 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let DB = null;
 let queryResult = null;
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let analyserNode = null;
+let currentAudioSrc = null;
+let currentAudioBuf = null;
+let audioStartTime = 0;
+let audioDuration = 2.0;
+let isPlaying = false;
+let waveAnimId = null;
+let currentSpeakerLabel = -1;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = 2048;
+    analyserNode.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+async function loadAudio(speakerLabel) {
+  const ctx = getAudioCtx();
+  const res = await fetch(`/api/audio/${speakerLabel}`);
+  const arrayBuf = await res.arrayBuffer();
+  currentAudioBuf = await ctx.decodeAudioData(arrayBuf);
+  audioDuration = currentAudioBuf.duration;
+}
+
+function playAudio() {
+  if (!currentAudioBuf) return;
+  const ctx = getAudioCtx();
+  if (currentAudioSrc) { try { currentAudioSrc.stop(); } catch(e) {} }
+  currentAudioSrc = ctx.createBufferSource();
+  currentAudioSrc.buffer = currentAudioBuf;
+  currentAudioSrc.connect(analyserNode);
+  currentAudioSrc.start();
+  audioStartTime = ctx.currentTime;
+  isPlaying = true;
+  document.getElementById('play-icon').innerHTML = '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>';
+  currentAudioSrc.onended = () => {
+    isPlaying = false;
+    document.getElementById('play-icon').innerHTML = '<path d="M8 5v14l11-7z"/>';
+  };
+  drawWaveform();
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    if (currentAudioSrc) { try { currentAudioSrc.stop(); } catch(e) {} }
+    isPlaying = false;
+    document.getElementById('play-icon').innerHTML = '<path d="M8 5v14l11-7z"/>';
+  } else {
+    playAudio();
+  }
+}
+
+function drawWaveform() {
+  if (waveAnimId) cancelAnimationFrame(waveAnimId);
+  const canvas = document.getElementById('waveform-canvas');
+  const ctx2d = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * devicePixelRatio;
+  canvas.height = canvas.offsetHeight * devicePixelRatio;
+
+  function frame() {
+    if (!analyserNode) return;
+    const W = canvas.width, H = canvas.height;
+    ctx2d.clearRect(0, 0, W, H);
+
+    const data = new Uint8Array(analyserNode.frequencyBinCount);
+    analyserNode.getByteTimeDomainData(data);
+
+    ctx2d.strokeStyle = isPlaying ? '#F5C518' : '#444';
+    ctx2d.lineWidth = 1.5 * devicePixelRatio;
+    ctx2d.beginPath();
+    const step = W / data.length;
+    data.forEach((v, i) => {
+      const x = i * step;
+      const y = (v / 128.0) * H / 2;
+      i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+    });
+    ctx2d.stroke();
+
+    // Progress line
+    if (isPlaying && audioCtx) {
+      const elapsed = audioCtx.currentTime - audioStartTime;
+      const pct = Math.min(elapsed / audioDuration, 1);
+      document.getElementById('progress-line').style.left = (pct * 100) + '%';
+      document.getElementById('audio-time').textContent = elapsed.toFixed(1) + 's';
+    }
+
+    waveAnimId = requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+async function playSpeaker(speakerLabel, speakerName, methodLabel) {
+  currentSpeakerLabel = speakerLabel;
+  document.getElementById('audio-speaker-name').textContent = speakerName;
+  document.getElementById('audio-method-label').textContent = methodLabel || '';
+  document.getElementById('audio-bar').classList.add('visible');
+  document.getElementById('progress-line').style.left = '0%';
+  document.getElementById('audio-time').textContent = '0.0s';
+  await loadAudio(speakerLabel);
+  playAudio();
+  if (queryResult) animateTrajectory(speakerLabel);
+}
+
+// ── Three.js trajectory ────────────────────────────────────────────────────
+let trajectoryLine = null;
+let trajectoryPoints = [];
+let trajectoryAnimId = null;
+
+function animateTrajectory(speakerLabel) {
+  if (!DB || !queryResult) return;
+  if (trajectoryLine) { scene.remove(trajectoryLine); trajectoryLine = null; }
+  trajectoryPoints = [];
+
+  const targetIdx = queryResult.query_idx;
+  const target = new THREE.Vector3(...DB.coords[targetIdx]);
+  const start  = target.clone().add(new THREE.Vector3(
+    (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, 8
+  ));
+
+  const dur = audioDuration * 1000;
+  const startT = performance.now();
+
+  function tick() {
+    const t = Math.min((performance.now() - startT) / dur, 1);
+    const ease = 1 - Math.pow(1 - t, 3); // cubic ease-out
+    const cur = start.clone().lerp(target, ease);
+    trajectoryPoints.push(cur.clone());
+
+    // Rebuild trail line
+    if (trajectoryLine) scene.remove(trajectoryLine);
+    if (trajectoryPoints.length > 1) {
+      const geo = new THREE.BufferGeometry().setFromPoints(trajectoryPoints);
+      const mat = new THREE.LineBasicMaterial({
+        color: 0xF5C518, transparent: true, opacity: 0.7
+      });
+      trajectoryLine = new THREE.Line(geo, mat);
+      scene.add(trajectoryLine);
+    }
+
+    // Move the query point live
+    if (pointsMesh && t < 1) {
+      const posAttr = pointsMesh.geometry.attributes.position;
+      posAttr.setXYZ(targetIdx, cur.x, cur.y, cur.z);
+      posAttr.needsUpdate = true;
+    }
+
+    if (t < 1) {
+      trajectoryAnimId = requestAnimationFrame(tick);
+    } else {
+      // Snap to final position
+      if (pointsMesh) {
+        const posAttr = pointsMesh.geometry.attributes.position;
+        posAttr.setXYZ(targetIdx, target.x, target.y, target.z);
+        posAttr.needsUpdate = true;
+      }
+    }
+  }
+  tick();
+}
 
 const METHOD_DESC = {
   "Flat":    "Exact cosine similarity against every embedding. O(n·d) per query. Guaranteed correct — used as ground truth for recall evaluation.",
@@ -461,12 +684,23 @@ function renderResults(data) {
   badge.innerHTML = `<span>${data.latency_ms} ms</span> · ${data.method} · top-${data.k}`;
 
   const grid = document.getElementById('results-grid');
-  grid.innerHTML = data.results.map(r => `
-    <div class="result-card ${r.match ? 'match' : ''}">
+  grid.innerHTML = data.results.map(r => {
+    const lbl = DB ? DB.labels[r.index] : 0;
+    return `
+    <div class="result-card ${r.match ? 'match' : ''}" onclick="playSpeaker(${lbl}, '${r.speaker}', '#${r.rank} · sim ${r.score}')">
       <div class="result-rank">#${r.rank}</div>
       <div class="result-speaker">${r.speaker}</div>
       <div class="result-score">sim = ${r.score}</div>
-    </div>`).join('');
+      <div class="result-play">▶ play voice</div>
+    </div>`;
+  }).join('');
+
+  // Auto-play query speaker
+  if (DB) {
+    const qLabel = DB.labels[data.query_idx];
+    const qSpeaker = DB.speaker_ids[qLabel];
+    playSpeaker(qLabel, qSpeaker, `query · ${data.method}`);
+  }
 }
 
 // ── Benchmark ──────────────────────────────────────────────────────────────

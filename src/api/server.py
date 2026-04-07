@@ -6,14 +6,17 @@ Endpoints:
   GET  /api/data      → PCA 3D coords + labels + speaker_ids
   POST /api/query     → { speaker, method, k } → Top-K results + latency
   GET  /api/benchmark → full recall@k + latency comparison
+  GET  /api/audio/{speaker_label} → synthetic WAV for that speaker
 """
 
+import io
 import time
+import struct
 import numpy as np
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sklearn.decomposition import PCA
@@ -127,6 +130,55 @@ def benchmark(k: int = 10, n_queries: int = 100):
         embeddings, k=k, n_queries=n_queries,
     )
     return results
+
+
+@app.get("/api/audio/{speaker_label}")
+def get_audio(speaker_label: int):
+    """
+    Generate a synthetic 2-second WAV representing a speaker's voice.
+    Each speaker gets a unique pitch (80–280 Hz) + harmonic mix.
+    Returns audio/wav so the browser can play it directly.
+    """
+    sample_rate = 22050
+    duration = 2.0
+    n_samples = int(sample_rate * duration)
+    t = np.linspace(0, duration, n_samples, endpoint=False)
+
+    # Unique pitch per speaker
+    rng = np.random.default_rng(speaker_label * 137 + 42)
+    base_freq = 80 + (speaker_label * 37) % 200       # 80–280 Hz
+    vibrato   = 1 + 0.008 * np.sin(2 * np.pi * 5 * t) # slight vibrato
+
+    # Voiced source: fundamental + harmonics
+    signal = (
+        0.50 * np.sin(2 * np.pi * base_freq * vibrato * t) +
+        0.25 * np.sin(2 * np.pi * base_freq * 2 * vibrato * t) +
+        0.12 * np.sin(2 * np.pi * base_freq * 3 * vibrato * t) +
+        0.06 * np.sin(2 * np.pi * base_freq * 4 * vibrato * t)
+    )
+
+    # Amplitude envelope: fade in/out
+    env = np.ones(n_samples)
+    fade = int(sample_rate * 0.05)
+    env[:fade]  = np.linspace(0, 1, fade)
+    env[-fade:] = np.linspace(1, 0, fade)
+    signal = (signal * env * 0.7).astype(np.float32)
+
+    # Encode as 16-bit PCM WAV
+    pcm = (signal * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    data_bytes = pcm.tobytes()
+    buf.write(b'RIFF')
+    buf.write(struct.pack('<I', 36 + len(data_bytes)))
+    buf.write(b'WAVE')
+    buf.write(b'fmt ')
+    buf.write(struct.pack('<IHHIIHH', 16, 1, 1, sample_rate,
+                          sample_rate * 2, 2, 16))
+    buf.write(b'data')
+    buf.write(struct.pack('<I', len(data_bytes)))
+    buf.write(data_bytes)
+
+    return Response(content=buf.getvalue(), media_type="audio/wav")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
