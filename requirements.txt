@@ -1,12 +1,14 @@
 # Core
 numpy
 matplotlib
+scikit-learn
 
 # UI
 streamlit
-
-# Visualization
 plotly
+
+# Animations
+manim
 
 # Speech embeddings (optional — only needed for real LibriSpeech extraction)
 # speechbrain
