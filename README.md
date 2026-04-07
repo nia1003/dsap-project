@@ -139,22 +139,39 @@ KD-Tree 在 192 維下 recall 僅 0.23，直接呈現 curse of dimensionality；
 
 ### 使用方式
 
+#### 方法一：Docker（推薦）
+
+```bash
+git clone https://github.com/nia1003/dsap-project.git
+cd dsap-project
+
+# 建立並啟動（第一次約 2–3 分鐘）
+docker compose up --build
+
+# 之後再跑
+docker compose up
+```
+
+開啟 **http://localhost:8601**
+
+#### 方法二：本機直接執行
+
 **安裝依賴：**
 ```bash
 pip install -r requirements.txt
 ```
 
-**執行 benchmark（合成資料，無需額外下載）：**
-```bash
-python main.py benchmark --synthetic
-python main.py scaling --synthetic
-```
-
 **啟動互動介面：**
 ```bash
-python main.py ui
-# 或直接執行
 streamlit run src/ui/app.py
+```
+
+開啟 **http://localhost:8501**
+
+**執行 benchmark：**
+```bash
+python main.py benchmark --synthetic   # 合成資料，無需下載
+python main.py scaling --synthetic
 ```
 
 **渲染 Manim 動畫：**
@@ -171,7 +188,7 @@ manim -pqh src/viz/animation/lsh_anim.py QueryScene
 **使用真實 LibriSpeech 資料（需安裝 SpeechBrain）：**
 ```bash
 pip install speechbrain torchaudio
-python main.py benchmark   # 自動下載並抽取 embedding
+python main.py benchmark
 ```
 
 ### 與課程的關聯總結
