@@ -154,7 +154,13 @@ docker compose up
 
 開啟 **http://localhost:8601**
 
-> **使用真實 LibriSpeech 資料（選用）**：編輯 `docker-compose.yml`，將 `USE_SYNTHETIC=1` 改為 `USE_SYNTHETIC=0`，重新 build。首次執行會自動下載約 1GB 資料，需額外 10–15 分鐘。
+> **使用真實 LibriSpeech 資料（選用）**：首次執行會自動下載約 1GB 資料，需額外 10–15 分鐘。
+> ```bash
+> # 方式一：profile
+> docker compose --profile real up --build
+> # 方式二：環境變數
+> USE_SYNTHETIC=0 docker compose up --build
+> ```
 
 #### 方法二：本機直接執行
 
