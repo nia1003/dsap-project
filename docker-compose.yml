@@ -4,18 +4,18 @@ services:
     ports:
       - "8601:8601"
     volumes:
-      - ./data:/app/data   # cache embeddings + downloaded LibriSpeech
+      - ./data:/app/data
     environment:
-      - USE_SYNTHETIC=1    # set to 0 to use real LibriSpeech (downloads ~1GB, first run ~15 min)
+      - USE_SYNTHETIC=${USE_SYNTHETIC:-1}  # default: synthetic; override with USE_SYNTHETIC=0
 
-  # Quick dev mode: no download, synthetic data only
-  ann-bench-dev:
+  # Real LibriSpeech mode (downloads ~1GB, first run ~15 min)
+  ann-bench-real:
     build: .
     ports:
-      - "8602:8601"
+      - "8601:8601"
     volumes:
       - ./data:/app/data
     environment:
-      - USE_SYNTHETIC=1
+      - USE_SYNTHETIC=0
     profiles:
-      - dev
+      - real
