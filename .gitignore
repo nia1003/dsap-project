@@ -40,3 +40,9 @@ venv/
 
 # Node.js
 node_modules/
+
+# Data cache (LibriSpeech downloads + extracted embeddings)
+data/
+
+# Generated benchmark plots
+*.png
