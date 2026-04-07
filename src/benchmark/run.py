@@ -26,7 +26,7 @@ def run(use_synthetic: bool = False, k: int = 10, n_queries: int = 100):
     indexes = {
         "Flat":   FlatSearch(),
         "KDTree": KDTree(leaf_size=10),
-        "LSH":    LSH(n_bits=12, n_tables=8),
+        "LSH":    LSH(n_bits=4, n_tables=16),
     }
 
     results = compare_all(indexes, embeddings, k=k, n_queries=n_queries)

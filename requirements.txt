@@ -1,0 +1,13 @@
+# Core
+numpy
+matplotlib
+
+# UI
+streamlit
+
+# Visualization
+plotly
+
+# Speech embeddings (optional — only needed for real LibriSpeech extraction)
+# speechbrain
+# torchaudio

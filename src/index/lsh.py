@@ -15,7 +15,7 @@ from collections import defaultdict
 
 
 class LSH:
-    def __init__(self, n_bits: int = 12, n_tables: int = 8, seed: int = 42):
+    def __init__(self, n_bits: int = 4, n_tables: int = 16, seed: int = 42):
         """
         Args:
             n_bits:   number of hyperplanes per table (bucket granularity)
