@@ -11,8 +11,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir \
     numpy matplotlib scikit-learn \
     fastapi "uvicorn[standard]" \
-    torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
     speechbrain
+
+RUN pip install --no-cache-dir \
+    torch torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu
 
 COPY . .
 
