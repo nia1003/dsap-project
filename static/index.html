@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ANN-Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --bg2: #111111;
+    --bg3: #1a1a1a;
+    --text: #ffffff;
+    --muted: #666666;
+    --accent: #F5C518;
+    --border: #222222;
+    --font: 'Space Grotesk', sans-serif;
+  }
+
+  html { font-size: 16px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); overflow-x: hidden; }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.25rem 2.5rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(8px);
+  }
+  .nav-logo { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+  .nav-logo span { color: var(--accent); }
+  .nav-links { display: flex; gap: 2rem; }
+  .nav-links a { font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); text-decoration: none; transition: color .2s; }
+  .nav-links a:hover { color: var(--text); }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh; display: flex; flex-direction: column;
+    justify-content: flex-end; padding: 2.5rem;
+    padding-top: 6rem;
+    border-bottom: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .hero-bg {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 70% 50%, #1a1a2e 0%, transparent 70%);
+  }
+  .hero-index { font-size: 0.75rem; color: var(--muted); letter-spacing: 0.15em; margin-bottom: 1rem; }
+  .hero-title {
+    font-size: clamp(3.5rem, 9vw, 9rem);
+    font-weight: 700; line-height: 0.9;
+    letter-spacing: -0.03em;
+    position: relative; z-index: 1;
+  }
+  .hero-title em { color: var(--accent); font-style: normal; }
+  .hero-sub {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 2rem; margin-top: 3rem;
+    padding-top: 2rem; border-top: 1px solid var(--border);
+    position: relative; z-index: 1;
+  }
+  .hero-sub p { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+  .hero-sub p strong { color: var(--text); display: block; margin-bottom: 0.5rem; font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; }
+
+  /* ── CANVAS SECTION ── */
+  .canvas-section {
+    display: grid; grid-template-columns: 280px 1fr;
+    min-height: 100vh;
+    border-bottom: 1px solid var(--border);
+  }
+  .controls {
+    padding: 2.5rem;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 2rem;
+  }
+  .controls-title { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+  .control-group { display: flex; flex-direction: column; gap: 0.75rem; }
+  .control-label { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .control-value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+
+  select, input[type=range] { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 0.6rem 0.75rem; font-family: var(--font); font-size: 0.85rem; appearance: none; cursor: pointer; }
+  select:focus, input:focus { outline: 1px solid var(--accent); }
+  input[type=range] { padding: 0; height: 2px; accent-color: var(--accent); }
+
+  .btn-query {
+    margin-top: auto; padding: 1rem 1.5rem;
+    background: var(--accent); color: #000;
+    border: none; font-family: var(--font);
+    font-size: 0.75rem; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    cursor: pointer; transition: opacity .2s;
+  }
+  .btn-query:hover { opacity: 0.85; }
+  .btn-query:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .viz-area { position: relative; overflow: hidden; }
+  #threejs-canvas { width: 100%; height: 100%; min-height: 100vh; display: block; }
+
+  /* ── RESULTS ── */
+  .results-section {
+    display: grid; grid-template-columns: 1fr 320px;
+    border-bottom: 1px solid var(--border);
+  }
+  .results-main { padding: 2.5rem; border-right: 1px solid var(--border); }
+  .section-label { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.5rem; }
+  .results-header { display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 2rem; }
+  .results-title { font-size: clamp(2rem, 4vw, 3.5rem); font-weight: 700; }
+  .latency-badge { font-size: 0.75rem; color: var(--muted); border: 1px solid var(--border); padding: 0.3rem 0.75rem; }
+  .latency-badge span { color: var(--accent); }
+
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1px; background: var(--border); }
+  .result-card { background: var(--bg); padding: 1.25rem; transition: background .15s; }
+  .result-card:hover { background: var(--bg3); }
+  .result-rank { font-size: 0.65rem; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; margin-bottom: 0.5rem; }
+  .result-speaker { font-size: 1rem; font-weight: 500; margin-bottom: 0.25rem; word-break: break-all; }
+  .result-score { font-size: 0.75rem; color: var(--muted); }
+  .result-card.match .result-speaker { color: var(--accent); }
+  .result-card.match .result-rank::after { content: " ✓"; color: var(--accent); }
+
+  .results-sidebar { padding: 2.5rem; }
+  .method-display { margin-top: 2rem; }
+  .method-name { font-size: 2.5rem; font-weight: 700; line-height: 1; }
+  .method-desc { font-size: 0.8rem; color: var(--muted); margin-top: 0.75rem; line-height: 1.6; }
+
+  /* ── BENCHMARK ── */
+  .benchmark-section { padding: 2.5rem; border-bottom: 1px solid var(--border); }
+  .benchmark-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2.5rem; }
+  .benchmark-title { font-size: clamp(2rem, 4vw, 3.5rem); font-weight: 700; }
+  .btn-run {
+    padding: 0.75rem 1.5rem; background: transparent;
+    border: 1px solid var(--accent); color: var(--accent);
+    font-family: var(--font); font-size: 0.7rem;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    cursor: pointer; transition: all .2s;
+  }
+  .btn-run:hover { background: var(--accent); color: #000; }
+
+  .benchmark-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+  .benchmark-card { background: var(--bg); padding: 2rem; }
+  .benchmark-card-title { font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.5rem; }
+
+  .bar-chart { display: flex; flex-direction: column; gap: 1rem; }
+  .bar-row { display: grid; grid-template-columns: 80px 1fr 60px; align-items: center; gap: 1rem; }
+  .bar-name { font-size: 0.75rem; color: var(--muted); }
+  .bar-track { height: 3px; background: var(--bg3); position: relative; }
+  .bar-fill { height: 100%; background: var(--accent); transition: width 0.8s cubic-bezier(.4,0,.2,1); }
+  .bar-fill.blue { background: #4C72B0; }
+  .bar-fill.orange { background: #DD8452; }
+  .bar-fill.green { background: var(--accent); }
+  .bar-value { font-size: 0.75rem; text-align: right; color: var(--text); }
+
+  /* ── FOOTER ── */
+  footer { padding: 2.5rem; display: flex; justify-content: space-between; align-items: center; }
+  footer p { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; }
+
+  /* ── LOADING ── */
+  .loading { color: var(--muted); font-size: 0.8rem; padding: 2rem 0; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 0.5rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo"><span>ANN</span>-Bench</div>
+  <div class="nav-links">
+    <a href="#search">Search</a>
+    <a href="#benchmark">Benchmark</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-index">01 — Speaker Embedding Search</div>
+  <h1 class="hero-title">Find<br><em>voices.</em><br>Not files.</h1>
+  <div class="hero-sub">
+    <p><strong>What</strong>From scratch implementation of Flat Search, KD-Tree, and LSH indexing on high-dimensional speaker embeddings.</p>
+    <p><strong>Why</strong>To understand how approximate nearest neighbor search works at the algorithmic level — not just use FAISS.</p>
+    <p><strong>Data</strong>LibriSpeech train-clean-100 speaker embeddings extracted via pretrained ECAPA-TDNN (192-dimensional).</p>
+  </div>
+</section>
+
+<!-- SEARCH -->
+<section class="canvas-section" id="search">
+  <div class="controls">
+    <div class="controls-title">Search</div>
+
+    <div class="control-group">
+      <div class="control-label">Method</div>
+      <select id="method-select">
+        <option>Flat</option>
+        <option>KD-Tree</option>
+        <option selected>LSH</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <div class="control-label">Top-K</div>
+      <div class="control-value" id="k-display">10</div>
+      <input type="range" id="k-slider" min="1" max="20" value="10">
+    </div>
+
+    <div class="control-group">
+      <div class="control-label">Speaker</div>
+      <select id="speaker-select"><option>Loading...</option></select>
+    </div>
+
+    <div class="control-group">
+      <div class="control-label">Sample Index</div>
+      <div class="control-value" id="sample-display">0</div>
+      <input type="range" id="sample-slider" min="0" max="19" value="0">
+    </div>
+
+    <button class="btn-query" id="btn-query" onclick="runQuery()">Search →</button>
+  </div>
+
+  <div class="viz-area">
+    <canvas id="threejs-canvas"></canvas>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section class="results-section" id="results">
+  <div class="results-main">
+    <div class="section-label">02 — Results</div>
+    <div class="results-header">
+      <h2 class="results-title">Neighbours.</h2>
+      <div class="latency-badge" id="latency-badge">Run a search</div>
+    </div>
+    <div class="results-grid" id="results-grid">
+      <div class="loading"><span class="spinner"></span>Awaiting query…</div>
+    </div>
+  </div>
+  <div class="results-sidebar">
+    <div class="section-label">Method</div>
+    <div class="method-display">
+      <div class="method-name" id="method-display">—</div>
+      <div class="method-desc" id="method-desc">Select a method and run a search.</div>
+    </div>
+  </div>
+</section>
+
+<!-- BENCHMARK -->
+<section class="benchmark-section" id="benchmark">
+  <div class="benchmark-header">
+    <div>
+      <div class="section-label">03 — Analysis</div>
+      <h2 class="benchmark-title">Benchmark.</h2>
+    </div>
+    <button class="btn-run" onclick="runBenchmark()">Run Benchmark →</button>
+  </div>
+  <div class="benchmark-grid" id="benchmark-grid">
+    <div class="benchmark-card">
+      <div class="benchmark-card-title">Recall@10</div>
+      <div class="bar-chart" id="recall-chart"><div class="loading">Click "Run Benchmark" to start</div></div>
+    </div>
+    <div class="benchmark-card">
+      <div class="benchmark-card-title">Query Latency (ms)</div>
+      <div class="bar-chart" id="latency-chart"></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>ANN-Bench — DSAP Capstone Project</p>
+  <p>Flat Search · KD-Tree · LSH</p>
+</footer>
+
+<!-- THREE.JS -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let DB = null;
+let queryResult = null;
+
+const METHOD_DESC = {
+  "Flat":    "Exact cosine similarity against every embedding. O(n·d) per query. Guaranteed correct — used as ground truth for recall evaluation.",
+  "KD-Tree": "Recursive space partitioning with branch-and-bound pruning. Fast in low dimensions but degrades in 192-dim space (curse of dimensionality).",
+  "LSH":     "Random projection hashing into buckets. Only checks candidates in the same bucket — sub-linear query time with ~92% recall.",
+};
+
+// ── Three.js ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('threejs-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setClearColor(0x0a0a0a, 1);
+renderer.setPixelRatio(window.devicePixelRatio);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+camera.position.set(0, 0, 9);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.4;
+
+let pointsMesh = null;
+let lineGroup = new THREE.Group();
+scene.add(lineGroup);
+
+function resizeRenderer() {
+  const w = canvas.parentElement.clientWidth;
+  const h = canvas.parentElement.clientHeight || window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resizeRenderer);
+resizeRenderer();
+
+function buildPointCloud(neighborIdxs = [], queryIdx = -1) {
+  if (!DB) return;
+  if (pointsMesh) { scene.remove(pointsMesh); pointsMesh.geometry.dispose(); }
+
+  const N = DB.coords.length;
+  const positions = new Float32Array(N * 3);
+  const colors    = new Float32Array(N * 3);
+  const sizes     = new Float32Array(N);
+  const neighborSet = new Set(neighborIdxs);
+
+  for (let i = 0; i < N; i++) {
+    positions[i*3]   = DB.coords[i][0];
+    positions[i*3+1] = DB.coords[i][1];
+    positions[i*3+2] = DB.coords[i][2];
+
+    const c = new THREE.Color(DB.colors[i]);
+    if (i === queryIdx) {
+      colors[i*3] = 1; colors[i*3+1] = 1; colors[i*3+2] = 1;
+      sizes[i] = 20;
+    } else if (neighborSet.has(i)) {
+      colors[i*3] = 0.96; colors[i*3+1] = 0.77; colors[i*3+2] = 0.09;
+      sizes[i] = 14;
+    } else {
+      colors[i*3] = c.r * 0.45; colors[i*3+1] = c.g * 0.45; colors[i*3+2] = c.b * 0.45;
+      sizes[i] = 3.5;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('size',     new THREE.BufferAttribute(sizes, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 } },
+    vertexShader: `
+      attribute float size; varying vec3 vColor; uniform float time;
+      void main() {
+        vColor = color;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (180.0 / -mvPos.z);
+        gl_Position = projectionMatrix * mvPos;
+      }`,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main() {
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        if (d > 1.0) discard;
+        float a = 1.0 - smoothstep(0.3, 1.0, d);
+        gl_FragColor = vec4(vColor, a);
+      }`,
+    vertexColors: true, transparent: true, depthWrite: false,
+  });
+
+  pointsMesh = new THREE.Points(geo, mat);
+  scene.add(pointsMesh);
+
+  // Lines query → neighbours
+  lineGroup.clear();
+  if (queryIdx >= 0) {
+    const qp = DB.coords[queryIdx];
+    neighborIdxs.forEach(ni => {
+      const np = DB.coords[ni];
+      const lg = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(...qp), new THREE.Vector3(...np)
+      ]);
+      lineGroup.add(new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xF5C518, transparent: true, opacity: 0.4 })));
+    });
+  }
+}
+
+let t = 0;
+(function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+  if (pointsMesh) pointsMesh.material.uniforms.time.value = t;
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+// ── Data loading ───────────────────────────────────────────────────────────
+async function loadData() {
+  const res = await fetch('/api/data');
+  DB = await res.json();
+
+  const sel = document.getElementById('speaker-select');
+  sel.innerHTML = '';
+  [...new Set(DB.speaker_ids)].sort().forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = opt.textContent = id;
+    sel.appendChild(opt);
+  });
+
+  buildPointCloud();
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+document.getElementById('k-slider').addEventListener('input', e => {
+  document.getElementById('k-display').textContent = e.target.value;
+});
+document.getElementById('sample-slider').addEventListener('input', e => {
+  document.getElementById('sample-display').textContent = e.target.value;
+});
+
+// ── Query ──────────────────────────────────────────────────────────────────
+async function runQuery() {
+  const btn = document.getElementById('btn-query');
+  btn.disabled = true;
+  btn.textContent = 'Searching…';
+  controls.autoRotate = false;
+
+  const body = {
+    speaker: document.getElementById('speaker-select').value,
+    method:  document.getElementById('method-select').value,
+    k:       parseInt(document.getElementById('k-slider').value),
+    sample:  parseInt(document.getElementById('sample-slider').value),
+  };
+
+  try {
+    const res = await fetch('/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    queryResult = await res.json();
+
+    buildPointCloud(queryResult.neighbor_indices, queryResult.query_idx);
+    renderResults(queryResult);
+
+    document.getElementById('method-display').textContent = body.method;
+    document.getElementById('method-desc').textContent = METHOD_DESC[body.method] || '';
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Search →';
+  }
+}
+
+function renderResults(data) {
+  const badge = document.getElementById('latency-badge');
+  badge.innerHTML = `<span>${data.latency_ms} ms</span> · ${data.method} · top-${data.k}`;
+
+  const grid = document.getElementById('results-grid');
+  grid.innerHTML = data.results.map(r => `
+    <div class="result-card ${r.match ? 'match' : ''}">
+      <div class="result-rank">#${r.rank}</div>
+      <div class="result-speaker">${r.speaker}</div>
+      <div class="result-score">sim = ${r.score}</div>
+    </div>`).join('');
+}
+
+// ── Benchmark ──────────────────────────────────────────────────────────────
+async function runBenchmark() {
+  const btn = document.querySelector('.btn-run');
+  btn.textContent = 'Running…';
+  btn.disabled = true;
+
+  document.getElementById('recall-chart').innerHTML = '<div class="loading"><span class="spinner"></span>Computing 100 queries per method…</div>';
+  document.getElementById('latency-chart').innerHTML = '';
+
+  try {
+    const res = await fetch('/api/benchmark?k=10&n_queries=100');
+    const data = await res.json();
+
+    const methods = Object.keys(data);
+    const colorClass = { Flat: 'blue', 'KD-Tree': 'orange', LSH: 'green' };
+    const maxLatency = Math.max(...methods.map(m => data[m].latency_ms_mean));
+
+    document.getElementById('recall-chart').innerHTML = methods.map(m => `
+      <div class="bar-row">
+        <div class="bar-name">${m}</div>
+        <div class="bar-track"><div class="bar-fill ${colorClass[m]}" style="width:${data[m].recall_at_k * 100}%"></div></div>
+        <div class="bar-value">${(data[m].recall_at_k * 100).toFixed(1)}%</div>
+      </div>`).join('');
+
+    document.getElementById('latency-chart').innerHTML = methods.map(m => `
+      <div class="bar-row">
+        <div class="bar-name">${m}</div>
+        <div class="bar-track"><div class="bar-fill ${colorClass[m]}" style="width:${(data[m].latency_ms_mean / maxLatency) * 100}%"></div></div>
+        <div class="bar-value">${data[m].latency_ms_mean.toFixed(2)}</div>
+      </div>`).join('');
+
+  } finally {
+    btn.textContent = 'Run Benchmark →';
+    btn.disabled = false;
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>

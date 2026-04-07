@@ -3,7 +3,11 @@ numpy
 matplotlib
 scikit-learn
 
-# UI
+# API backend
+fastapi
+uvicorn[standard]
+
+# UI (legacy Streamlit)
 streamlit
 plotly
 
