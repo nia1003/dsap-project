@@ -1,0 +1,7 @@
+services:
+  ann-bench:
+    build: .
+    ports:
+      - "8601:8601"
+    volumes:
+      - ./data:/app/data   # cache embeddings between runs
