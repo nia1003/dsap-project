@@ -6,15 +6,16 @@ Endpoints:
   GET  /api/data      → PCA 3D coords + labels + speaker_ids
   POST /api/query     → { speaker, method, k } → Top-K results + latency
   GET  /api/benchmark → full recall@k + latency comparison
-  GET  /api/audio/{speaker_label} → synthetic WAV for that speaker
+  GET  /api/audio/{idx} → real .flac (LibriSpeech) or synthetic WAV fallback
 """
 
 import io
+import os
 import time
 import struct
 import numpy as np
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,8 +39,13 @@ app.add_middleware(
 
 # ── Startup: load data once ───────────────────────────────────────────────────
 
-print("Loading embeddings...")
-embeddings, labels, speaker_ids = load_embeddings(use_synthetic=True)
+USE_SYNTHETIC = os.environ.get("USE_SYNTHETIC", "0") == "1"
+
+print(f"Loading embeddings (synthetic={USE_SYNTHETIC})...")
+embeddings, labels, speaker_ids, audio_paths = load_embeddings(use_synthetic=USE_SYNTHETIC)
+
+HAS_REAL_AUDIO = any(p for p in audio_paths)
+print(f"Real audio available: {HAS_REAL_AUDIO}")
 
 print("Building indexes...")
 _indexes = {
@@ -60,17 +66,20 @@ print(f"Ready — {len(embeddings)} embeddings, {len(set(labels))} speakers")
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 
+
 @app.get("/", response_class=HTMLResponse)
 def root():
     return FileResponse(STATIC_DIR / "index.html")
+
 
 @app.get("/api/data")
 def get_data():
     import colorsys
     n_speakers = len(set(labels))
+
     def spk_hex(i):
         r, g, b = colorsys.hls_to_rgb(i / n_speakers, 0.55, 0.7)
-        return "#{:02x}{:02x}{:02x}".format(int(r*255), int(g*255), int(b*255))
+        return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
 
     return {
         "coords": _coords3d,
@@ -78,6 +87,7 @@ def get_data():
         "speaker_ids": speaker_ids,
         "colors": [spk_hex(int(l)) for l in labels],
         "n_speakers": n_speakers,
+        "has_real_audio": HAS_REAL_AUDIO,
     }
 
 
@@ -132,24 +142,38 @@ def benchmark(k: int = 10, n_queries: int = 100):
     return results
 
 
-@app.get("/api/audio/{speaker_label}")
-def get_audio(speaker_label: int):
+@app.get("/api/audio/{embedding_idx}")
+def get_audio(embedding_idx: int):
     """
-    Generate a synthetic 2-second WAV representing a speaker's voice.
-    Each speaker gets a unique pitch (80–280 Hz) + harmonic mix.
-    Returns audio/wav so the browser can play it directly.
+    Serve audio for a given embedding index.
+    - If real LibriSpeech .flac exists → stream it directly (audio/flac)
+    - Otherwise → generate synthetic WAV (audio/wav)
     """
+    if embedding_idx < 0 or embedding_idx >= len(audio_paths):
+        raise HTTPException(status_code=404, detail="Index out of range")
+
+    fpath = audio_paths[embedding_idx] if embedding_idx < len(audio_paths) else ""
+
+    # ── Real audio ────────────────────────────────────────────────────────────
+    if fpath and Path(fpath).exists():
+        suffix = Path(fpath).suffix.lower()
+        media = "audio/flac" if suffix == ".flac" else "audio/wav"
+        return FileResponse(fpath, media_type=media)
+
+    # ── Synthetic fallback ────────────────────────────────────────────────────
+    spk_label = int(labels[embedding_idx])
+    return _synth_wav(spk_label)
+
+
+def _synth_wav(speaker_label: int) -> Response:
     sample_rate = 22050
     duration = 2.0
     n_samples = int(sample_rate * duration)
     t = np.linspace(0, duration, n_samples, endpoint=False)
 
-    # Unique pitch per speaker
-    rng = np.random.default_rng(speaker_label * 137 + 42)
-    base_freq = 80 + (speaker_label * 37) % 200       # 80–280 Hz
-    vibrato   = 1 + 0.008 * np.sin(2 * np.pi * 5 * t) # slight vibrato
+    base_freq = 80 + (speaker_label * 37) % 200
+    vibrato   = 1 + 0.008 * np.sin(2 * np.pi * 5 * t)
 
-    # Voiced source: fundamental + harmonics
     signal = (
         0.50 * np.sin(2 * np.pi * base_freq * vibrato * t) +
         0.25 * np.sin(2 * np.pi * base_freq * 2 * vibrato * t) +
@@ -157,14 +181,12 @@ def get_audio(speaker_label: int):
         0.06 * np.sin(2 * np.pi * base_freq * 4 * vibrato * t)
     )
 
-    # Amplitude envelope: fade in/out
     env = np.ones(n_samples)
     fade = int(sample_rate * 0.05)
     env[:fade]  = np.linspace(0, 1, fade)
     env[-fade:] = np.linspace(1, 0, fade)
     signal = (signal * env * 0.7).astype(np.float32)
 
-    # Encode as 16-bit PCM WAV
     pcm = (signal * 32767).astype(np.int16)
     buf = io.BytesIO()
     data_bytes = pcm.tobytes()
@@ -177,7 +199,6 @@ def get_audio(speaker_label: int):
     buf.write(b'data')
     buf.write(struct.pack('<I', len(data_bytes)))
     buf.write(data_bytes)
-
     return Response(content=buf.getvalue(), media_type="audio/wav")
 
 

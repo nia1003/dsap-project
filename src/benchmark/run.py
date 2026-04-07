@@ -19,7 +19,7 @@ from src.benchmark.eval import compare_all
 
 
 def run(use_synthetic: bool = False, k: int = 10, n_queries: int = 100):
-    embeddings, labels, speaker_ids = load_embeddings(use_synthetic=use_synthetic)
+    embeddings, labels, speaker_ids, _ = load_embeddings(use_synthetic=use_synthetic)
     print(f"\nDatabase: {len(embeddings)} embeddings | dim={embeddings.shape[1]} | "
           f"speakers={len(set(labels))}\n")
 

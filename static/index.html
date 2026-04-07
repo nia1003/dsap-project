@@ -436,16 +436,16 @@ function drawWaveform() {
   frame();
 }
 
-async function playSpeaker(speakerLabel, speakerName, methodLabel) {
-  currentSpeakerLabel = speakerLabel;
+async function playSpeaker(embeddingIdx, speakerName, methodLabel) {
+  currentSpeakerLabel = embeddingIdx;
   document.getElementById('audio-speaker-name').textContent = speakerName;
   document.getElementById('audio-method-label').textContent = methodLabel || '';
   document.getElementById('audio-bar').classList.add('visible');
   document.getElementById('progress-line').style.left = '0%';
   document.getElementById('audio-time').textContent = '0.0s';
-  await loadAudio(speakerLabel);
+  await loadAudio(embeddingIdx);
   playAudio();
-  if (queryResult) animateTrajectory(speakerLabel);
+  if (queryResult) animateTrajectory(embeddingIdx);
 }
 
 // ── Three.js trajectory ────────────────────────────────────────────────────
@@ -687,7 +687,7 @@ function renderResults(data) {
   grid.innerHTML = data.results.map(r => {
     const lbl = DB ? DB.labels[r.index] : 0;
     return `
-    <div class="result-card ${r.match ? 'match' : ''}" onclick="playSpeaker(${lbl}, '${r.speaker}', '#${r.rank} · sim ${r.score}')">
+    <div class="result-card ${r.match ? 'match' : ''}" onclick="playSpeaker(${r.index}, '${r.speaker}', '#${r.rank} · sim ${r.score}')">
       <div class="result-rank">#${r.rank}</div>
       <div class="result-speaker">${r.speaker}</div>
       <div class="result-score">sim = ${r.score}</div>
@@ -695,11 +695,10 @@ function renderResults(data) {
     </div>`;
   }).join('');
 
-  // Auto-play query speaker
+  // Auto-play query speaker using embedding index
   if (DB) {
-    const qLabel = DB.labels[data.query_idx];
-    const qSpeaker = DB.speaker_ids[qLabel];
-    playSpeaker(qLabel, qSpeaker, `query · ${data.method}`);
+    const qSpeaker = DB.speaker_ids[DB.labels[data.query_idx]];
+    playSpeaker(data.query_idx, qSpeaker, `query · ${data.method}`);
   }
 }
 

@@ -4,30 +4,30 @@ Data loader for LibriSpeech speaker embeddings.
 Pipeline:
   1. Download LibriSpeech train-clean-100 (if not cached)
   2. Extract speaker embeddings via pretrained ECAPA-TDNN (SpeechBrain)
-  3. Save embeddings + labels as .npy for fast reuse
+  3. Save embeddings + labels + audio_paths as .npy for fast reuse
 
 If SpeechBrain is unavailable, falls back to synthetic embeddings for development.
 """
 
-import os
 import numpy as np
 from pathlib import Path
 
 CACHE_DIR = Path(__file__).parent.parent.parent / "data"
-EMBEDDINGS_PATH = CACHE_DIR / "embeddings.npy"
-LABELS_PATH = CACHE_DIR / "labels.npy"
+EMBEDDINGS_PATH  = CACHE_DIR / "embeddings.npy"
+LABELS_PATH      = CACHE_DIR / "labels.npy"
 SPEAKER_IDS_PATH = CACHE_DIR / "speaker_ids.npy"
+AUDIO_PATHS_PATH = CACHE_DIR / "audio_paths.npy"   # NEW: absolute .flac paths
 
 
-def extract_embeddings_speechbrain(max_speakers: int = 50) -> tuple[np.ndarray, np.ndarray, list]:
+def extract_embeddings_speechbrain(max_speakers: int = 50) -> tuple:
     """
-    Download LibriSpeech train-clean-100 and extract speaker embeddings
-    using pretrained ECAPA-TDNN from SpeechBrain.
+    Download LibriSpeech train-clean-100 and extract speaker embeddings.
 
     Returns:
-        embeddings: (N, 192) float32 array
-        labels:     (N,)     int array — speaker index (0-based)
-        speaker_ids: list of original LibriSpeech speaker ID strings
+        embeddings:   (N, 192) float32
+        labels:       (N,)     int
+        speaker_ids:  list[str]
+        audio_paths:  list[str]  — absolute path to each .flac file
     """
     import torchaudio
     from speechbrain.pretrained import EncoderClassifier
@@ -49,28 +49,38 @@ def extract_embeddings_speechbrain(max_speakers: int = 50) -> tuple[np.ndarray, 
 
     # Group by speaker
     speaker_to_indices: dict[int, list[int]] = {}
-    for i, (_, _, _, speaker_id, *_) in enumerate(dataset):
+    for i, item in enumerate(dataset):
+        speaker_id = item[3]
         speaker_to_indices.setdefault(speaker_id, []).append(i)
 
     selected_speakers = sorted(speaker_to_indices.keys())[:max_speakers]
     print(f"Using {len(selected_speakers)} speakers")
 
-    embeddings, labels = [], []
+    embeddings, labels, audio_paths = [], [], []
     speaker_ids = []
 
     for label_idx, speaker_id in enumerate(selected_speakers):
         speaker_ids.append(str(speaker_id))
         for idx in speaker_to_indices[speaker_id]:
-            waveform, sample_rate, *_ = dataset[idx]
+            item = dataset[idx]
+            waveform, sample_rate = item[0], item[1]
+            # LibriSpeech dataset stores path in item[-1] or we can derive it
+            # torchaudio LIBRISPEECH exposes ._path via dataset._walker
+            try:
+                fpath = str(dataset._walker[idx])
+            except Exception:
+                fpath = ""
+
             if sample_rate != 16000:
                 waveform = torchaudio.functional.resample(waveform, sample_rate, 16000)
             emb = classifier.encode_batch(waveform).squeeze().detach().numpy()
             embeddings.append(emb)
             labels.append(label_idx)
+            audio_paths.append(fpath)
 
     embeddings = np.array(embeddings, dtype=np.float32)
     labels = np.array(labels, dtype=np.int32)
-    return embeddings, labels, speaker_ids
+    return embeddings, labels, speaker_ids, audio_paths
 
 
 def generate_synthetic_embeddings(
@@ -78,16 +88,7 @@ def generate_synthetic_embeddings(
     samples_per_speaker: int = 20,
     dim: int = 192,
     seed: int = 42,
-) -> tuple[np.ndarray, np.ndarray, list]:
-    """
-    Generate synthetic speaker embeddings for development/testing.
-    Each speaker is a Gaussian cluster in embedding space.
-
-    Returns:
-        embeddings: (N, dim) float32
-        labels:     (N,)     int
-        speaker_ids: list of str
-    """
+) -> tuple:
     rng = np.random.default_rng(seed)
     embeddings, labels = [], []
 
@@ -95,7 +96,6 @@ def generate_synthetic_embeddings(
         center = rng.normal(0, 1, dim).astype(np.float32)
         center /= np.linalg.norm(center)
         cluster = center + rng.normal(0, 0.1, (samples_per_speaker, dim)).astype(np.float32)
-        # L2-normalize each embedding
         norms = np.linalg.norm(cluster, axis=1, keepdims=True)
         cluster = cluster / norms
         embeddings.append(cluster)
@@ -104,49 +104,49 @@ def generate_synthetic_embeddings(
     embeddings = np.vstack(embeddings)
     labels = np.array(labels, dtype=np.int32)
     speaker_ids = [f"speaker_{i:04d}" for i in range(n_speakers)]
-    return embeddings, labels, speaker_ids
+    audio_paths = [""] * len(embeddings)   # no real audio
+    return embeddings, labels, speaker_ids, audio_paths
 
 
-def load_embeddings(use_synthetic: bool = False) -> tuple[np.ndarray, np.ndarray, list]:
+def load_embeddings(use_synthetic: bool = False) -> tuple:
     """
-    Load embeddings from cache, or extract/generate if not cached.
-
-    Args:
-        use_synthetic: force synthetic data (for development)
-
-    Returns:
-        embeddings: (N, D) float32
-        labels:     (N,)   int
-        speaker_ids: list of str
+    Returns: (embeddings, labels, speaker_ids, audio_paths)
     """
     if not use_synthetic and EMBEDDINGS_PATH.exists():
         print("Loading cached embeddings...")
-        embeddings = np.load(EMBEDDINGS_PATH)
-        labels = np.load(LABELS_PATH)
-        speaker_ids = np.load(SPEAKER_IDS_PATH, allow_pickle=True).tolist()
+        embeddings   = np.load(EMBEDDINGS_PATH)
+        labels       = np.load(LABELS_PATH)
+        speaker_ids  = np.load(SPEAKER_IDS_PATH, allow_pickle=True).tolist()
+        if AUDIO_PATHS_PATH.exists():
+            audio_paths = np.load(AUDIO_PATHS_PATH, allow_pickle=True).tolist()
+        else:
+            audio_paths = [""] * len(embeddings)
         print(f"Loaded {len(embeddings)} embeddings, {len(set(labels))} speakers, dim={embeddings.shape[1]}")
-        return embeddings, labels, speaker_ids
+        return embeddings, labels, speaker_ids, audio_paths
 
     if use_synthetic:
         print("Generating synthetic embeddings...")
-        embeddings, labels, speaker_ids = generate_synthetic_embeddings()
+        result = generate_synthetic_embeddings()
     else:
         try:
-            embeddings, labels, speaker_ids = extract_embeddings_speechbrain()
+            result = extract_embeddings_speechbrain()
         except ImportError:
             print("SpeechBrain not available, falling back to synthetic embeddings.")
-            embeddings, labels, speaker_ids = generate_synthetic_embeddings()
+            result = generate_synthetic_embeddings()
 
-    # Cache to disk
+    embeddings, labels, speaker_ids, audio_paths = result
+
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     np.save(EMBEDDINGS_PATH, embeddings)
     np.save(LABELS_PATH, labels)
     np.save(SPEAKER_IDS_PATH, np.array(speaker_ids, dtype=object))
+    np.save(AUDIO_PATHS_PATH, np.array(audio_paths, dtype=object))
     print(f"Saved {len(embeddings)} embeddings → {CACHE_DIR}")
 
-    return embeddings, labels, speaker_ids
+    return embeddings, labels, speaker_ids, audio_paths
 
 
 if __name__ == "__main__":
-    embs, lbls, ids = load_embeddings(use_synthetic=True)
+    embs, lbls, ids, paths = load_embeddings(use_synthetic=True)
     print(f"embeddings: {embs.shape}, labels: {lbls.shape}, speakers: {len(ids)}")
+    print(f"audio paths sample: {paths[:3]}")

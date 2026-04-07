@@ -25,7 +25,7 @@ N_QUERIES = 50
 
 
 def run_scaling(use_synthetic: bool = False):
-    embeddings, _, _ = load_embeddings(use_synthetic=use_synthetic)
+    embeddings, _, _, _ = load_embeddings(use_synthetic=use_synthetic)
     max_n = min(len(embeddings), max(DB_SIZES))
 
     results = {name: {"recall": [], "latency": []}

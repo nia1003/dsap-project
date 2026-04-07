@@ -4,4 +4,18 @@ services:
     ports:
       - "8601:8601"
     volumes:
-      - ./data:/app/data   # cache embeddings between runs
+      - ./data:/app/data   # cache embeddings + downloaded LibriSpeech
+    environment:
+      - USE_SYNTHETIC=0    # set to 1 to skip download
+
+  # Quick dev mode: no download, synthetic data only
+  ann-bench-dev:
+    build: .
+    ports:
+      - "8602:8601"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - USE_SYNTHETIC=1
+    profiles:
+      - dev
