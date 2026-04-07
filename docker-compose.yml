@@ -6,7 +6,7 @@ services:
     volumes:
       - ./data:/app/data   # cache embeddings + downloaded LibriSpeech
     environment:
-      - USE_SYNTHETIC=0    # set to 1 to skip download
+      - USE_SYNTHETIC=1    # set to 0 to use real LibriSpeech (downloads ~1GB, first run ~15 min)
 
   # Quick dev mode: no download, synthetic data only
   ann-bench-dev:

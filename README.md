@@ -145,7 +145,7 @@ KD-Tree 在 192 維下 recall 僅 0.23，直接呈現 curse of dimensionality；
 git clone https://github.com/nia1003/dsap-project.git
 cd dsap-project
 
-# 建立並啟動（第一次約 2–3 分鐘）
+# 建立並啟動（第一次約 5 分鐘，使用合成資料，即開即用）
 docker compose up --build
 
 # 之後再跑
@@ -153,6 +153,8 @@ docker compose up
 ```
 
 開啟 **http://localhost:8601**
+
+> **使用真實 LibriSpeech 資料（選用）**：編輯 `docker-compose.yml`，將 `USE_SYNTHETIC=1` 改為 `USE_SYNTHETIC=0`，重新 build。首次執行會自動下載約 1GB 資料，需額外 10–15 分鐘。
 
 #### 方法二：本機直接執行
 
