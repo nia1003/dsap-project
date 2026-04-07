@@ -8,9 +8,12 @@ services:
     environment:
       - USE_SYNTHETIC=${USE_SYNTHETIC:-1}  # default: synthetic; override with USE_SYNTHETIC=0
 
-  # Real LibriSpeech mode (downloads ~1GB, first run ~15 min)
+  # Real LibriSpeech mode (installs PyTorch+SpeechBrain, downloads ~1GB, first run ~15 min)
   ann-bench-real:
-    build: .
+    build:
+      context: .
+      args:
+        WITH_REAL_AUDIO: "1"
     ports:
       - "8601:8601"
     volumes:
