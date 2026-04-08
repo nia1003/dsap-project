@@ -66,9 +66,10 @@ def _ensure_librispeech() -> Path:
 def extract_embeddings_speechbrain() -> tuple:
     """
     Download LibriSpeech test-clean and extract speaker embeddings for 5 speakers.
-    Uses manual download + directory scanning — does not use torchaudio.datasets.
+    Uses soundfile for audio loading (avoids torchaudio backend / TorchCodec issues).
     """
-    import torchaudio
+    import torch
+    import soundfile as sf
     from speechbrain.inference import EncoderClassifier
 
     max_speakers = REAL_CONFIG["max_speakers"]
@@ -82,7 +83,6 @@ def extract_embeddings_speechbrain() -> tuple:
 
     libri_root = _ensure_librispeech()
 
-    # Scan directory: LibriSpeech/test-clean/{speaker_id}/{chapter_id}/*.flac
     speaker_dirs = sorted([d for d in libri_root.iterdir() if d.is_dir()])[:max_speakers]
     print(f"Using {len(speaker_dirs)} speakers, up to {max_utt} utterances each")
 
@@ -95,15 +95,13 @@ def extract_embeddings_speechbrain() -> tuple:
         extracted = 0
         for fpath in flac_files:
             try:
-                waveform, sample_rate = torchaudio.load(str(fpath))
+                # Use soundfile directly — avoids torchaudio backend requirement
+                data, sample_rate = sf.read(str(fpath), dtype='float32', always_2d=False)
+                waveform = torch.tensor(data).unsqueeze(0)  # (1, samples)
                 if sample_rate != 16000:
+                    import torchaudio
                     waveform = torchaudio.functional.resample(waveform, sample_rate, 16000)
-                # encode_batch expects (batch, samples); waveform is (channels, samples)
-                if waveform.dim() == 2 and waveform.shape[0] > 1:
-                    waveform = waveform.mean(0, keepdim=True)  # stereo → mono
                 emb = classifier.encode_batch(waveform).squeeze(0).detach().numpy()
-                if emb.ndim == 0:
-                    emb = emb.reshape(1)
                 embeddings.append(emb)
                 labels.append(label_idx)
                 audio_paths.append(str(fpath))
@@ -111,6 +109,9 @@ def extract_embeddings_speechbrain() -> tuple:
             except Exception as e:
                 print(f"    Skip {fpath.name}: {e}")
         print(f"  Speaker {spk_dir.name}: {extracted}/{len(flac_files)} utterances extracted")
+
+    if not embeddings:
+        raise RuntimeError("No embeddings extracted — soundfile/libsndfile not working")
 
     embeddings = np.array(embeddings, dtype=np.float32)
     labels = np.array(labels, dtype=np.int32)
