@@ -80,7 +80,7 @@ class KDTree:
         heap: list[tuple[float, int]] = []
         self._search(self._root, q, k, heap)
 
-        heap.sort(key=lambda x: x[0])           # sort by -dist (closest first)
+        heap.sort(key=lambda x: x[0], reverse=True)  # sort by -dist descending = closest first
         indices = np.array([i for _, i in heap], dtype=np.int64)
         distances = np.array([-d for d, _ in heap], dtype=np.float32)
         return indices, distances
