@@ -40,32 +40,47 @@ app.add_middleware(
 # ── Startup: load data once ───────────────────────────────────────────────────
 
 USE_SYNTHETIC = os.environ.get("USE_SYNTHETIC", "0") == "1"
+_ready = False
+embeddings = labels = speaker_ids = audio_paths = None
+HAS_REAL_AUDIO = False
+_indexes = {}
+_coords3d = []
 
-print(f"Loading embeddings (synthetic={USE_SYNTHETIC})...")
-embeddings, labels, speaker_ids, audio_paths = load_embeddings(use_synthetic=USE_SYNTHETIC)
+@app.on_event("startup")
+async def startup():
+    global embeddings, labels, speaker_ids, audio_paths
+    global HAS_REAL_AUDIO, _indexes, _coords3d, _ready
 
-HAS_REAL_AUDIO = any(p for p in audio_paths)
-print(f"Real audio available: {HAS_REAL_AUDIO}")
+    print(f"Loading embeddings (synthetic={USE_SYNTHETIC})...")
+    embeddings, labels, speaker_ids, audio_paths = load_embeddings(use_synthetic=USE_SYNTHETIC)
 
-print("Building indexes...")
-_indexes = {
-    "Flat":   FlatSearch(),
-    "KDTree": KDTree(),
-    "LSH":    LSH(),
-}
-for idx in _indexes.values():
-    idx.build(embeddings)
+    HAS_REAL_AUDIO = any(p for p in audio_paths)
+    print(f"Real audio available: {HAS_REAL_AUDIO}")
 
-print("Computing PCA...")
-_pca = PCA(n_components=3, random_state=42)
-_coords3d = _pca.fit_transform(embeddings).tolist()
+    print("Building indexes...")
+    _indexes = {
+        "Flat":   FlatSearch(),
+        "KDTree": KDTree(),
+        "LSH":    LSH(),
+    }
+    for idx in _indexes.values():
+        idx.build(embeddings)
 
-print(f"Ready — {len(embeddings)} embeddings, {len(set(labels))} speakers")
+    print("Computing PCA...")
+    _pca = PCA(n_components=3, random_state=42)
+    _coords3d = _pca.fit_transform(embeddings).tolist()
+
+    _ready = True
+    print(f"Ready — {len(embeddings)} embeddings, {len(set(labels))} speakers")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 STATIC_DIR = Path(__file__).parent.parent.parent / "static"
 
+
+@app.get("/api/ready")
+def ready():
+    return {"ready": _ready}
 
 @app.get("/", response_class=HTMLResponse)
 def root():

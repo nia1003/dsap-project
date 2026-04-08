@@ -754,7 +754,20 @@ async function runBenchmark() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
-loadData();
+async function waitReady() {
+  const sel = document.getElementById('speaker-select');
+  for (let i = 0; i < 60; i++) {
+    try {
+      const r = await fetch('/api/ready');
+      const { ready } = await r.json();
+      if (ready) { loadData(); return; }
+    } catch(e) {}
+    sel.innerHTML = `<option>Starting… (${i+1}s)</option>`;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  sel.innerHTML = '<option>Server timeout</option>';
+}
+waitReady();
 </script>
 </body>
 </html>
