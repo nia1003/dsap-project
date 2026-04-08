@@ -38,15 +38,10 @@ def _cache_valid() -> bool:
 def extract_embeddings_speechbrain() -> tuple:
     """
     Download LibriSpeech test-clean and extract speaker embeddings for 5 speakers.
-
-    Returns:
-        embeddings:   (N, 192) float32
-        labels:       (N,)     int
-        speaker_ids:  list[str]
-        audio_paths:  list[str]  — absolute path to each .flac file
+    Uses directory scanning (fast) instead of iterating the full dataset.
     """
     import torchaudio
-    from speechbrain.pretrained import EncoderClassifier
+    from speechbrain.inference import EncoderClassifier
 
     max_speakers = REAL_CONFIG["max_speakers"]
     max_utt      = REAL_CONFIG["max_utterances"]
@@ -59,43 +54,33 @@ def extract_embeddings_speechbrain() -> tuple:
         savedir=str(CACHE_DIR / "ecapa_model"),
     )
 
+    # Download (skips if already present)
     print(f"Downloading LibriSpeech {REAL_CONFIG['subset']}...")
-    dataset = torchaudio.datasets.LIBRISPEECH(
-        root=str(CACHE_DIR),
-        url=REAL_CONFIG["subset"],
-        download=True,
+    torchaudio.datasets.LIBRISPEECH(
+        root=str(CACHE_DIR), url=REAL_CONFIG["subset"], download=True,
     )
 
-    # Group by speaker
-    speaker_to_indices: dict[int, list[int]] = {}
-    for i, item in enumerate(dataset):
-        speaker_id = item[3]
-        speaker_to_indices.setdefault(speaker_id, []).append(i)
-
-    selected_speakers = sorted(speaker_to_indices.keys())[:max_speakers]
-    print(f"Using {len(selected_speakers)} speakers, up to {max_utt} utterances each")
+    # Discover speakers by scanning directory structure
+    # LibriSpeech/{subset}/{speaker_id}/{chapter_id}/*.flac
+    libri_root = CACHE_DIR / "LibriSpeech" / REAL_CONFIG["subset"]
+    speaker_dirs = sorted([d for d in libri_root.iterdir() if d.is_dir()])[:max_speakers]
+    print(f"Using {len(speaker_dirs)} speakers, up to {max_utt} utterances each")
 
     embeddings, labels, audio_paths = [], [], []
     speaker_ids = []
 
-    for label_idx, speaker_id in enumerate(selected_speakers):
-        speaker_ids.append(str(speaker_id))
-        indices = speaker_to_indices[speaker_id][:max_utt]
-        for idx in indices:
-            item = dataset[idx]
-            waveform, sample_rate = item[0], item[1]
-            try:
-                fpath = str(dataset._walker[idx])
-            except Exception:
-                fpath = ""
-
+    for label_idx, spk_dir in enumerate(speaker_dirs):
+        speaker_ids.append(spk_dir.name)
+        flac_files = sorted(spk_dir.rglob("*.flac"))[:max_utt]
+        for fpath in flac_files:
+            waveform, sample_rate = torchaudio.load(str(fpath))
             if sample_rate != 16000:
                 waveform = torchaudio.functional.resample(waveform, sample_rate, 16000)
             emb = classifier.encode_batch(waveform).squeeze().detach().numpy()
             embeddings.append(emb)
             labels.append(label_idx)
-            audio_paths.append(fpath)
-        print(f"  Speaker {speaker_id}: {len(indices)} utterances")
+            audio_paths.append(str(fpath))
+        print(f"  Speaker {spk_dir.name}: {len(flac_files)} utterances")
 
     embeddings = np.array(embeddings, dtype=np.float32)
     labels = np.array(labels, dtype=np.int32)
@@ -147,8 +132,9 @@ def load_embeddings(use_synthetic: bool = False) -> tuple:
     else:
         try:
             result = extract_embeddings_speechbrain()
-        except ImportError:
-            print("SpeechBrain not available, falling back to synthetic embeddings.")
+        except Exception as e:
+            print(f"Real embedding extraction failed: {e}")
+            print("Falling back to synthetic embeddings.")
             result = generate_synthetic_embeddings()
 
     embeddings, labels, speaker_ids, audio_paths = result
