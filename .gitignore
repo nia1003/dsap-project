@@ -46,3 +46,7 @@ node_modules/
 
 # Generated benchmark plots
 *.png
+
+# Manim intermediate build artifacts
+media/texts/
+media/videos/**/partial_movie_files/
