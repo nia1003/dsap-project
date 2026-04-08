@@ -683,14 +683,15 @@ function renderResults(data) {
   const badge = document.getElementById('latency-badge');
   badge.innerHTML = `<span>${data.latency_ms} ms</span> · ${data.method} · top-${data.k}`;
 
+  const scoreLabel = data.method === 'KD-Tree' ? 'dist' : 'sim';
   const grid = document.getElementById('results-grid');
   grid.innerHTML = data.results.map(r => {
     const lbl = DB ? DB.labels[r.index] : 0;
     return `
-    <div class="result-card ${r.match ? 'match' : ''}" onclick="playSpeaker(${r.index}, '${r.speaker}', '#${r.rank} · sim ${r.score}')">
+    <div class="result-card ${r.match ? 'match' : ''}" onclick="playSpeaker(${r.index}, '${r.speaker}', '#${r.rank} · ${scoreLabel} ${r.score}')">
       <div class="result-rank">#${r.rank}</div>
       <div class="result-speaker">${r.speaker}</div>
-      <div class="result-score">sim = ${r.score}</div>
+      <div class="result-score">${scoreLabel} = ${r.score}</div>
       <div class="result-play">▶ play voice</div>
     </div>`;
   }).join('');

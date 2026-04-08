@@ -45,7 +45,7 @@ def get_pca_coords(_embeddings):
     pca = PCA(n_components=3, random_state=42)
     return pca.fit_transform(_embeddings)
 
-embeddings, labels, speaker_ids = get_data()
+embeddings, labels, speaker_ids, _audio_paths = get_data()
 indexes = get_indexes(embeddings)
 coords3d = get_pca_coords(embeddings)
 
@@ -172,10 +172,11 @@ with col2:
     st.metric("Candidates returned", len(neighbor_indices))
 
     st.markdown("**Top-K neighbours**")
+    score_label = "dist" if method == "KD-Tree" else "sim"
     for rank, (ni, score) in enumerate(zip(neighbor_indices, scores), 1):
         spk = speaker_ids[labels[ni]]
         match = "✅" if spk == query_speaker else "❌"
-        st.markdown(f"`#{rank}` {match} `{spk}` (sim={score:.3f})")
+        st.markdown(f"`#{rank}` {match} `{spk}` ({score_label}={score:.3f})")
 
 # ── Benchmark panel ───────────────────────────────────────────────────────────
 if run_benchmark:
