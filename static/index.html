@@ -275,9 +275,7 @@
       <h2 class="results-title">Neighbours.</h2>
       <div class="latency-badge" id="latency-badge">Run a search</div>
     </div>
-    <div class="results-grid" id="results-grid">
-      <div class="loading"><span class="spinner"></span>Awaiting query…</div>
-    </div>
+    <div class="results-grid" id="results-grid"></div>
   </div>
   <div class="results-sidebar">
     <div class="section-label">Method</div>
@@ -665,7 +663,7 @@ async function runQuery() {
   const btn = document.getElementById('btn-query');
   btn.disabled = true;
   btn.textContent = 'Searching…';
-  controls.autoRotate = false;
+  if (controls) controls.autoRotate = false;
 
   const body = {
     speaker: document.getElementById('speaker-select').value,
@@ -682,7 +680,7 @@ async function runQuery() {
     });
     queryResult = await res.json();
 
-    buildPointCloud(queryResult.neighbor_indices, queryResult.query_idx);
+    if (renderer) buildPointCloud(queryResult.neighbor_indices, queryResult.query_idx);
     renderResults(queryResult);
 
     document.getElementById('method-display').textContent = body.method;
