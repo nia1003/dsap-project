@@ -6,16 +6,16 @@ services:
     volumes:
       - ./data:/app/data   # cache embeddings + downloaded LibriSpeech
     environment:
-      - USE_SYNTHETIC=0    # real LibriSpeech test-clean, 5 speakers
+      - USE_SYNTHETIC=1    # synthetic embeddings — instant start, no download
 
-  # Fast synthetic mode (no download, no PyTorch needed)
-  ann-bench-synth:
+  # Real LibriSpeech mode (downloads ~350 MB test-clean, needs 10–15 min first run)
+  ann-bench-real:
     build: .
     ports:
-      - "8602:8601"
+      - "8601:8601"
     volumes:
       - ./data:/app/data
     environment:
-      - USE_SYNTHETIC=1
+      - USE_SYNTHETIC=0
     profiles:
-      - synth
+      - real
