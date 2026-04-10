@@ -60,9 +60,8 @@ class KDTree:
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
 
         return node
 
