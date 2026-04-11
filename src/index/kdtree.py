@@ -21,6 +21,7 @@ class _Node:
     split_val: float      # value at split
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)  # all indices in leaf bucket
 
 
 class KDTree:
@@ -28,7 +29,7 @@ class KDTree:
         """
         Args:
             leaf_size: stop splitting when a node has <= leaf_size points.
-                       Larger values trade tree depth for simpler nodes.
+                       All points in the leaf bucket are stored and scanned linearly.
         """
         self.leaf_size = leaf_size
         self._root: _Node | None = None
@@ -55,12 +56,15 @@ class KDTree:
         mid = len(sorted_indices) // 2
 
         node = _Node(
-            idx=sorted_indices[mid],
+            idx=int(sorted_indices[mid]),
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
+        if len(indices) <= self.leaf_size:
+            # Leaf bucket: store all points for linear scan during query
+            node.leaf_indices = sorted_indices
+        else:
             node.left = self._build(sorted_indices[:mid])
             node.right = self._build(sorted_indices[mid + 1:])
 
@@ -88,6 +92,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        if node.leaf_indices is not None:
+            # Leaf bucket: linear scan through all stored points
+            for idx in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, int(idx)), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
