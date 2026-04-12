@@ -11,8 +11,8 @@ uvicorn[standard]
 streamlit
 plotly
 
-# Animations
-manim
+# Animations (optional — requires system pangocairo >= 1.30.0)
+# manim
 
 # Speech embeddings (optional — only needed for real LibriSpeech extraction)
 # speechbrain

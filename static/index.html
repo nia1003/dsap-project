@@ -452,7 +452,7 @@ let trajectoryPoints = [];
 let trajectoryAnimId = null;
 
 function animateTrajectory(speakerLabel) {
-  if (!DB || !queryResult) return;
+  if (!DB || !queryResult || !scene || typeof THREE === 'undefined') return;
   if (trajectoryLine) { scene.remove(trajectoryLine); trajectoryLine = null; }
   trajectoryPoints = [];
 
