@@ -5,6 +5,9 @@ Recursively partitions embedding space by splitting on the dimension
 with highest variance at each node. Query uses branch-and-bound pruning
 to skip subtrees that cannot contain a closer neighbour.
 
+Leaf nodes store ALL their points and are searched by brute force,
+so every database point is reachable.
+
 Time complexity:
   - Build: O(n log n)
   - Query: O(log n) average, O(n) worst case (high dimensions)
@@ -16,11 +19,14 @@ from dataclasses import dataclass, field
 
 @dataclass
 class _Node:
-    idx: int              # index of the median point in the database
+    idx: int              # index of the median point (internal nodes only)
     split_dim: int        # dimension used for splitting
     split_val: float      # value at split
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    # Leaf nodes store every index in the bucket for brute-force search.
+    # None means this is an internal node.
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)
 
 
 class KDTree:
@@ -28,7 +34,8 @@ class KDTree:
         """
         Args:
             leaf_size: stop splitting when a node has <= leaf_size points.
-                       Larger values trade tree depth for simpler nodes.
+                       Those points are all stored in the leaf and searched
+                       by brute force during query.
         """
         self.leaf_size = leaf_size
         self._root: _Node | None = None
@@ -42,7 +49,7 @@ class KDTree:
         indices = np.arange(len(embeddings))
         self._root = self._build(indices)
 
-    def _build(self, indices: np.ndarray) -> _Node | None:
+    def _build(self, indices: np.ndarray) -> "_Node | None":
         if len(indices) == 0:
             return None
 
@@ -55,12 +62,16 @@ class KDTree:
         mid = len(sorted_indices) // 2
 
         node = _Node(
-            idx=sorted_indices[mid],
+            idx=int(sorted_indices[mid]),
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
+        if len(indices) <= self.leaf_size:
+            # Leaf node: store ALL indices so no point is ever lost.
+            node.leaf_indices = sorted_indices
+        else:
+            # Internal node: recurse on left and right partitions.
             node.left = self._build(sorted_indices[:mid])
             node.right = self._build(sorted_indices[mid + 1:])
 
@@ -76,20 +87,30 @@ class KDTree:
             indices:   (k,) int
             distances: (k,) float — L2 distances, ascending
         """
-        # Max-heap stored as list of (-dist, idx)
+        import heapq
+        # Min-heap of (-dist, idx): root is always the current worst (farthest).
         heap: list[tuple[float, int]] = []
         self._search(self._root, q, k, heap)
 
-        heap.sort(key=lambda x: x[0], reverse=True)  # sort by -dist descending = closest first
+        # Sort ascending by distance (closest first).
+        heap.sort(key=lambda x: x[0])  # most-negative -dist = closest
         indices = np.array([i for _, i in heap], dtype=np.int64)
         distances = np.array([-d for d, _ in heap], dtype=np.float32)
         return indices, distances
 
-    def _search(self, node: _Node | None, q: np.ndarray, k: int,
+    def _search(self, node: "_Node | None", q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
             return
 
+        # Leaf node: brute-force over every stored index.
+        if node.leaf_indices is not None:
+            for idx in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, int(idx)), k)
+            return
+
+        # Internal node: evaluate the median point, then descend.
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
         _heap_push(heap, (-dist, node.idx), k)
 
@@ -108,7 +129,12 @@ class KDTree:
 # ------------------------------------------------------------------ heap utils
 
 def _heap_push(heap: list, item: tuple, max_size: int) -> None:
-    """Maintain a max-heap of size max_size (largest -dist = worst neighbour at top)."""
+    """
+    Keep a min-heap (by -dist) of at most max_size entries.
+    The root is always the farthest neighbour found so far.
+    When the heap is full, heappop discards that farthest entry,
+    keeping only the max_size closest points.
+    """
     import heapq
     heapq.heappush(heap, item)
     if len(heap) > max_size:
