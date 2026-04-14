@@ -37,9 +37,15 @@ class KDTree:
     # ------------------------------------------------------------------ build
 
     def build(self, embeddings: np.ndarray) -> None:
-        """Build the KD-Tree from an (N, D) embedding array."""
-        self._embeddings = embeddings.astype(np.float32)
-        indices = np.arange(len(embeddings))
+        """Build the KD-Tree from an (N, D) embedding array.
+
+        Embeddings are L2-normalised so that L2 distance is monotonically
+        equivalent to cosine distance, matching the FlatSearch ground truth.
+        """
+        emb = embeddings.astype(np.float32)
+        norms = np.linalg.norm(emb, axis=1, keepdims=True)
+        self._embeddings = emb / np.where(norms == 0, 1, norms)
+        indices = np.arange(len(self._embeddings))
         self._root = self._build(indices)
 
     def _build(self, indices: np.ndarray) -> _Node | None:
@@ -60,9 +66,8 @@ class KDTree:
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
 
         return node
 
