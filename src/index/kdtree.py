@@ -16,9 +16,10 @@ from dataclasses import dataclass, field
 
 @dataclass
 class _Node:
-    idx: int              # index of the median point in the database
+    idx: int              # index of the median point (internal nodes only)
     split_dim: int        # dimension used for splitting
     split_val: float      # value at split
+    bucket: list = field(default_factory=list)  # all indices stored at leaf nodes
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
 
@@ -46,6 +47,12 @@ class KDTree:
         if len(indices) == 0:
             return None
 
+        # Leaf node: store all remaining points in a bucket
+        if len(indices) <= self.leaf_size:
+            node = _Node(idx=indices[0], split_dim=0, split_val=0.0,
+                         bucket=indices.tolist())
+            return node
+
         data = self._embeddings[indices]
 
         # Choose split dimension: highest variance
@@ -59,10 +66,8 @@ class KDTree:
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
-
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
 
         return node
 
@@ -88,6 +93,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        # Leaf bucket: check every point in the bucket
+        if node.bucket:
+            for idx in node.bucket:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, idx), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
