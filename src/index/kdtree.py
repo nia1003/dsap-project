@@ -5,6 +5,9 @@ Recursively partitions embedding space by splitting on the dimension
 with highest variance at each node. Query uses branch-and-bound pruning
 to skip subtrees that cannot contain a closer neighbour.
 
+Embeddings are L2-normalised at build time so that L2 distance is
+monotone with cosine distance — making results comparable to FlatSearch.
+
 Time complexity:
   - Build: O(n log n)
   - Query: O(log n) average, O(n) worst case (high dimensions)
@@ -16,11 +19,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class _Node:
-    idx: int              # index of the median point in the database
-    split_dim: int        # dimension used for splitting
+    split_dim: int        # dimension used for splitting; -1 for leaf nodes
     split_val: float      # value at split
+    idx: int = -1         # index of the median point (internal nodes only)
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)
 
 
 class KDTree:
@@ -37,14 +41,22 @@ class KDTree:
     # ------------------------------------------------------------------ build
 
     def build(self, embeddings: np.ndarray) -> None:
-        """Build the KD-Tree from an (N, D) embedding array."""
-        self._embeddings = embeddings.astype(np.float32)
-        indices = np.arange(len(embeddings))
+        """Build the KD-Tree from an (N, D) embedding array.
+
+        Normalises embeddings so L2 distance equals cosine distance ordering.
+        """
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        self._embeddings = (embeddings / np.where(norms == 0, 1, norms)).astype(np.float32)
+        indices = np.arange(len(self._embeddings))
         self._root = self._build(indices)
 
     def _build(self, indices: np.ndarray) -> _Node | None:
         if len(indices) == 0:
             return None
+
+        # Leaf node: store all remaining indices directly
+        if len(indices) <= self.leaf_size:
+            return _Node(split_dim=-1, split_val=0.0, leaf_indices=indices)
 
         data = self._embeddings[indices]
 
@@ -55,15 +67,12 @@ class KDTree:
         mid = len(sorted_indices) // 2
 
         node = _Node(
-            idx=sorted_indices[mid],
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
+            idx=sorted_indices[mid],
         )
-
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
-
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
         return node
 
     # ------------------------------------------------------------------ query
@@ -76,9 +85,12 @@ class KDTree:
             indices:   (k,) int
             distances: (k,) float — L2 distances, ascending
         """
+        q = q.astype(np.float32)
+        q_norm = q / (np.linalg.norm(q) or 1.0)
+
         # Max-heap stored as list of (-dist, idx)
         heap: list[tuple[float, int]] = []
-        self._search(self._root, q, k, heap)
+        self._search(self._root, q_norm, k, heap)
 
         heap.sort(key=lambda x: x[0], reverse=True)  # sort by -dist descending = closest first
         indices = np.array([i for _, i in heap], dtype=np.int64)
@@ -88,6 +100,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        # Leaf node: evaluate all stored points
+        if node.leaf_indices is not None:
+            for idx in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, idx), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
