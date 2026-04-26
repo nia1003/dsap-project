@@ -16,11 +16,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class _Node:
-    idx: int              # index of the median point in the database
     split_dim: int        # dimension used for splitting
     split_val: float      # value at split
+    idx: int = -1         # index of the median point (internal nodes only)
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)  # leaf nodes only
 
 
 class KDTree:
@@ -52,18 +53,21 @@ class KDTree:
         split_dim = int(np.argmax(np.var(data, axis=0)))
         order = np.argsort(data[:, split_dim])
         sorted_indices = indices[order]
-        mid = len(sorted_indices) // 2
 
+        # Leaf node: store all indices and scan them during search
+        if len(indices) <= self.leaf_size:
+            node = _Node(split_dim=split_dim, split_val=0.0)
+            node.leaf_indices = sorted_indices
+            return node
+
+        mid = len(sorted_indices) // 2
         node = _Node(
-            idx=sorted_indices[mid],
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
+            idx=sorted_indices[mid],
         )
-
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
-
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
         return node
 
     # ------------------------------------------------------------------ query
@@ -88,6 +92,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        # Leaf node: linear scan over all stored indices
+        if node.leaf_indices is not None:
+            for idx in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, idx), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
