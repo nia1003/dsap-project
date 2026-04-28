@@ -37,8 +37,9 @@ class KDTree:
     # ------------------------------------------------------------------ build
 
     def build(self, embeddings: np.ndarray) -> None:
-        """Build the KD-Tree from an (N, D) embedding array."""
-        self._embeddings = embeddings.astype(np.float32)
+        """Build the KD-Tree from an (N, D) embedding array (L2-normalised for cosine NN)."""
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        self._embeddings = (embeddings / np.where(norms == 0, 1, norms)).astype(np.float32)
         indices = np.arange(len(embeddings))
         self._root = self._build(indices)
 
@@ -60,7 +61,7 @@ class KDTree:
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
+        if len(indices) > 1:
             node.left = self._build(sorted_indices[:mid])
             node.right = self._build(sorted_indices[mid + 1:])
 
@@ -76,6 +77,7 @@ class KDTree:
             indices:   (k,) int
             distances: (k,) float — L2 distances, ascending
         """
+        q = (q / (np.linalg.norm(q) or 1.0)).astype(np.float32)
         # Max-heap stored as list of (-dist, idx)
         heap: list[tuple[float, int]] = []
         self._search(self._root, q, k, heap)
