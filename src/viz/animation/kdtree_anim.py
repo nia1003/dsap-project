@@ -13,7 +13,15 @@ Usage:
 
 from __future__ import annotations
 import numpy as np
-from manim import *
+
+try:
+    from manim import *
+except ImportError as exc:
+    raise ImportError(
+        "manim is required to render animations. "
+        "Install the system dependency first (apt-get install libpangocairo-1.0-0), "
+        "then: pip install manim"
+    ) from exc
 
 RNG = np.random.default_rng(7)
 N_POINTS = 30

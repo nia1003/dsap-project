@@ -11,8 +11,8 @@ uvicorn[standard]
 streamlit
 plotly
 
-# Animations
-manim
+# Animations (requires system lib: apt-get install libpangocairo-1.0-0)
+# manim
 
 # Speech embeddings (optional — only needed for real LibriSpeech extraction)
 # speechbrain

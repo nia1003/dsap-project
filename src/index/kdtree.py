@@ -12,15 +12,18 @@ Time complexity:
 
 import numpy as np
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
 class _Node:
-    idx: int              # index of the median point in the database
+    idx: int              # index of the median point (internal nodes) or -1 (leaf)
     split_dim: int        # dimension used for splitting
     split_val: float      # value at split
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    # Non-None only at leaf nodes: all indices in this bucket
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)
 
 
 class KDTree:
@@ -54,16 +57,22 @@ class KDTree:
         sorted_indices = indices[order]
         mid = len(sorted_indices) // 2
 
+        if len(indices) <= self.leaf_size:
+            # Leaf node: store ALL indices so no points are silently dropped.
+            return _Node(
+                idx=sorted_indices[mid],
+                split_dim=split_dim,
+                split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
+                leaf_indices=sorted_indices,
+            )
+
         node = _Node(
             idx=sorted_indices[mid],
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
-
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
-
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
         return node
 
     # ------------------------------------------------------------------ query
@@ -88,6 +97,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        if node.leaf_indices is not None:
+            # Leaf bucket: evaluate every stored point.
+            for li in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[li] - q))
+                _heap_push(heap, (-dist, li), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
