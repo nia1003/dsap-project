@@ -24,13 +24,7 @@ class _Node:
 
 
 class KDTree:
-    def __init__(self, leaf_size: int = 10):
-        """
-        Args:
-            leaf_size: stop splitting when a node has <= leaf_size points.
-                       Larger values trade tree depth for simpler nodes.
-        """
-        self.leaf_size = leaf_size
+    def __init__(self):
         self._root: _Node | None = None
         self._embeddings: np.ndarray | None = None
 
@@ -59,11 +53,8 @@ class KDTree:
             split_dim=split_dim,
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
-
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
-
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
         return node
 
     # ------------------------------------------------------------------ query

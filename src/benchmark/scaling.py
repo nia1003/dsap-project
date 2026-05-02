@@ -38,7 +38,7 @@ def run_scaling(use_synthetic: bool = False):
         print(f"\n--- N={n} ---")
 
         for name, idx in [("Flat", FlatSearch()),
-                           ("KDTree", KDTree(leaf_size=10)),
+                           ("KDTree", KDTree()),
                            ("LSH", LSH(n_bits=4, n_tables=16))]:
             r = benchmark(idx, subset, k=K, n_queries=min(N_QUERIES, n // 2))
             results[name]["recall"].append(r["recall_at_k"])

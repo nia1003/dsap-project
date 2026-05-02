@@ -25,7 +25,7 @@ def run(use_synthetic: bool = False, k: int = 10, n_queries: int = 100):
 
     indexes = {
         "Flat":   FlatSearch(),
-        "KDTree": KDTree(leaf_size=10),
+        "KDTree": KDTree(),
         "LSH":    LSH(n_bits=4, n_tables=16),
     }
 
