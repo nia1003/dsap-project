@@ -151,7 +151,7 @@ def query(req: QueryRequest):
 @app.get("/api/benchmark")
 def benchmark(k: int = 10, n_queries: int = 100):
     results = compare_all(
-        {"Flat": FlatSearch(), "KD-Tree": KDTree(), "LSH": LSH()},
+        {"Flat": FlatSearch(), "KDTree": KDTree(), "LSH": LSH()},
         embeddings, k=k, n_queries=n_queries,
     )
     return results

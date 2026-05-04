@@ -35,6 +35,7 @@ class FlatSearch:
         """
         q_norm = q / (np.linalg.norm(q) or 1.0)
         sims = self._embeddings @ q_norm          # (N,)
+        k = min(k, len(sims))
         top_k = np.argpartition(sims, -k)[-k:]   # unordered Top-K
         top_k = top_k[np.argsort(sims[top_k])[::-1]]
         return top_k, sims[top_k]
