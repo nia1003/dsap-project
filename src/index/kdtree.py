@@ -16,11 +16,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class _Node:
-    idx: int              # index of the median point in the database
+    idx: int              # index of the median point (internal nodes only)
     split_dim: int        # dimension used for splitting
     split_val: float      # value at split
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)  # all points at leaf
 
 
 class KDTree:
@@ -63,6 +64,10 @@ class KDTree:
         if len(indices) > self.leaf_size:
             node.left = self._build(sorted_indices[:mid])
             node.right = self._build(sorted_indices[mid + 1:])
+        else:
+            # Store all indices at this leaf — without this, only the median
+            # point would be accessible and the rest would be silently dropped.
+            node.leaf_indices = sorted_indices
 
         return node
 
@@ -88,6 +93,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        if node.leaf_indices is not None:
+            # Leaf node: evaluate every stored point.
+            for idx in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, idx), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
