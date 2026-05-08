@@ -37,8 +37,14 @@ class KDTree:
     # ------------------------------------------------------------------ build
 
     def build(self, embeddings: np.ndarray) -> None:
-        """Build the KD-Tree from an (N, D) embedding array."""
-        self._embeddings = embeddings.astype(np.float32)
+        """Build the KD-Tree from an (N, D) embedding array.
+
+        Embeddings are L2-normalised so that L2 distance rank equals cosine
+        similarity rank — matching the ground-truth produced by FlatSearch.
+        """
+        emb = embeddings.astype(np.float32)
+        norms = np.linalg.norm(emb, axis=1, keepdims=True)
+        self._embeddings = emb / np.where(norms == 0, 1, norms)
         indices = np.arange(len(embeddings))
         self._root = self._build(indices)
 
@@ -60,9 +66,10 @@ class KDTree:
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
-            node.left = self._build(sorted_indices[:mid])
-            node.right = self._build(sorted_indices[mid + 1:])
+        # Always recurse — stopping early here would silently lose the points
+        # in sorted_indices[:mid] and sorted_indices[mid+1:] from the index.
+        node.left = self._build(sorted_indices[:mid])
+        node.right = self._build(sorted_indices[mid + 1:])
 
         return node
 
@@ -76,6 +83,8 @@ class KDTree:
             indices:   (k,) int
             distances: (k,) float — L2 distances, ascending
         """
+        q = q.astype(np.float32)
+        q = q / (np.linalg.norm(q) or 1.0)
         # Max-heap stored as list of (-dist, idx)
         heap: list[tuple[float, int]] = []
         self._search(self._root, q, k, heap)
