@@ -21,6 +21,7 @@ class _Node:
     split_val: float      # value at split
     left: "_Node | None" = field(default=None, repr=False)
     right: "_Node | None" = field(default=None, repr=False)
+    leaf_indices: "np.ndarray | None" = field(default=None, repr=False)
 
 
 class KDTree:
@@ -60,7 +61,10 @@ class KDTree:
             split_val=float(self._embeddings[sorted_indices[mid], split_dim]),
         )
 
-        if len(indices) > self.leaf_size:
+        if len(indices) <= self.leaf_size:
+            # Store all points in the leaf so no points are dropped
+            node.leaf_indices = sorted_indices
+        else:
             node.left = self._build(sorted_indices[:mid])
             node.right = self._build(sorted_indices[mid + 1:])
 
@@ -88,6 +92,13 @@ class KDTree:
     def _search(self, node: _Node | None, q: np.ndarray, k: int,
                 heap: list) -> None:
         if node is None:
+            return
+
+        # Leaf node: score all stored points directly
+        if node.leaf_indices is not None:
+            for idx in node.leaf_indices:
+                dist = float(np.linalg.norm(self._embeddings[idx] - q))
+                _heap_push(heap, (-dist, idx), k)
             return
 
         dist = float(np.linalg.norm(self._embeddings[node.idx] - q))
